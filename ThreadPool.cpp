@@ -1,5 +1,5 @@
 #include"ThreadPool.h"
-
+#include<iostream>
 void ThreadPool::work(){
     while(true){
         std::function<void()>task;
@@ -13,7 +13,15 @@ void ThreadPool::work(){
             task=std::move(tasksQueue.front());
             tasksQueue.pop();
         }
-        task();
+
+        //**捕获并处理异常**
+        try {
+            // 执行任务
+            task();  
+        } catch (const std::exception& ex) {
+            // 处理异常，可以记录日志
+            std::cerr << "Exception in thread: " << ex.what() << std::endl;
+        }
     }
 }
 
