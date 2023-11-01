@@ -111,7 +111,7 @@ std::future<typename std::result_of<F(Args...)>::type> ThreadPool::addTasksQueue
         std::unique_lock<std::mutex> lock(tasksQueueMutex);
 
         //检查是否当前等待队列的大小是否超过了队列最大限制
-        if(tasks.size()>=this->maxQueueSize){
+        if(tasksQueue.size()>=this->maxQueueSize){
             //等待一些任务被完成或线程池停止
             conditionProducers.wait(lock,
                 [this]{
