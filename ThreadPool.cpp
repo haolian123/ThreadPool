@@ -17,6 +17,7 @@ void ThreadPool::work(std::size_t workerNumber){
                     poolSize<workerNumber+1;
                 }
             );
+            
             //处理线程池缩减或关闭
             if((this->threadPoolStop&&this->tasksQueue.empty())||
                 (!this->threadPoolStop&&poolSize<workerNumber+1)){
@@ -93,58 +94,85 @@ ThreadPool::ThreadPool(size_t threadsNumber):poolSize(threadsNumber),inFlight(0)
     }
 
 }
+// 设置任务队列大小的上限
 void ThreadPool::setQueueSizeLimit(std::size_t limit){
-    std::unique_lock<std::mutex>lock(this->tasksQueueMutex);
+    // 创建一个互斥锁来保护任务队列
+    std::unique_lock<std::mutex> lock(this->tasksQueueMutex);
     
+    // 如果线程池已停止，直接返回
     if(threadPoolStop){
         return;
     }
-    std::size_t const oldLimit=maxQueueSize;
-    maxQueueSize=std::max(limit,std::size_t(1));
-    if(oldLimit<maxQueueSize){
+    
+    // 保存旧的队列大小上限
+    std::size_t const oldLimit = maxQueueSize;
+    
+    // 更新队列大小上限，至少为 1
+    maxQueueSize = std::max(limit, std::size_t(1));
+    
+    // 如果新的队列大小大于旧的大小，通知所有生产者线程
+    if(oldLimit < maxQueueSize){
         conditionProducers.notify_all();
     }
 }
+
+// 设置线程池的大小
 void ThreadPool::setPoolSize(std::size_t limit){
-    if(limit<1){
-        limit=1;
+    // 线程池大小至少为 1
+    if(limit < 1){
+        limit = 1;
     }
 
-    std::unique_lock<std::mutex>lock(this->tasksQueueMutex);
+    // 创建一个互斥锁来保护任务队列
+    std::unique_lock<std::mutex> lock(this->tasksQueueMutex);
+    
+    // 如果线程池已停止，直接返回
     if(threadPoolStop)
         return;
     
-    std::size_t const oldSize=poolSize;
-    assert(this->workers.size()>=oldSize);
-
-    poolSize=limit;
-    if(poolSize>oldSize){
-        //创建新的工作线程
-        //有可能在池大小减小后仍在运行，这样的线程将继续运行
-        for(std::size_t i=oldSize;i!=poolSize;i++){
-            startWorker(i,lock);
+    // 保存旧的线程池大小
+    std::size_t const oldSize = poolSize;
+    
+    // 断言：当前工作线程的数量应不小于旧的线程池大小
+    assert(this->workers.size() >= oldSize);
+    
+    // 更新线程池大小
+    poolSize = limit;
+    
+    if(poolSize > oldSize){
+        // 创建新的工作线程
+        // 注意：即使池大小减小，这些新线程也会继续运行
+        for(std::size_t i = oldSize; i != poolSize; i++){
+            startWorker(i, lock);
         }
-    }else if(poolSize<oldSize){
-        // 通知所有工作线程开始缩小
+    } else if(poolSize < oldSize){
+        // 通知所有工作线程，线程池将开始缩小
         this->conditionConsumers.notify_all();
     }
 }
 
-//等待工作队列为空
+// 等待任务队列变为空
 void ThreadPool::waitUntilTasksQueueIsEmpty(){
+    // 创建一个互斥锁来保护任务队列
     std::unique_lock<std::mutex> lock(this->tasksQueueMutex);
+    
+    // 等待条件变量，直到任务队列为空
     this->conditionProducers.wait(lock,
-        [this]{return this->tasksQueue.empty();}    
+        [this]{ return this->tasksQueue.empty(); }    
     );
 }
 
-//等待所有任务完成
+// 等待所有任务完成
 void ThreadPool::waitUntilNothingInFlight(){
+    // 创建一个互斥锁来保护“inFlight”变量
     std::unique_lock<std::mutex> lock(this->inFlightMutex);
+    
+    // 等待条件变量，直到所有任务都完成（即 inFlight 变为 0）
     this->inFlightCondition.wait(lock,
-        [this]{return this->inFlight==0;}
+        [this]{ return this->inFlight == 0; }
     );
 }
+
 
 ThreadPool::~ThreadPool(){
 
